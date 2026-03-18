@@ -1,164 +1,154 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body {
-      width: 320px;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      padding: 10px;
-      background-color: #ffffff;
-      font-size: 13px;
-    }
-    .header {
-      display: flex;
-      align-items: center;
-      margin-bottom: 8px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #eee;
-    }
-    .header img { width: 24px; height: 24px; margin-right: 8px; }
-    .header h3 { margin: 0; color: #333; font-size: 15px; }
+document.addEventListener('DOMContentLoaded', () => {
+  const navToggle = document.getElementById('navToggle');
+  const scrollToggle = document.getElementById('scrollToggle');
+  const themeToggle = document.getElementById('themeToggle');
+  const snippetLen = document.getElementById('snippetLen');
+  const historyBtn = document.getElementById('historyBtn');
+  const historyContainer = document.getElementById('historyContainer');
+  const filterContainer = document.getElementById('filterContainer');
 
-    /* Toggle Switch Styles */
-    .setting-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-    .label { color: #444; }
+  // Load Settings
+  // DEFAULTS: nav=true, scroll=true, theme=false, snippet=40
+  chrome.storage.sync.get(['navEnabled', 'blockScroll', 'darkTheme', 'snippetLen'], (data) => {
+    navToggle.checked = data.navEnabled !== false; // Default true
+    scrollToggle.checked = data.blockScroll !== false; // Default TRUE (Fixed!)
+    themeToggle.checked = data.darkTheme === true; // Default false
+    snippetLen.value = data.snippetLen || 40;
+  });
+
+  // Save Settings
+  const saveSettings = () => {
+    chrome.storage.sync.set({
+      navEnabled: navToggle.checked,
+      blockScroll: scrollToggle.checked,
+      darkTheme: themeToggle.checked,
+      snippetLen: parseInt(snippetLen.value) || 40
+    });
+  };
+
+  navToggle.onchange = saveSettings;
+  scrollToggle.onchange = saveSettings;
+  themeToggle.onchange = saveSettings;
+  snippetLen.onchange = saveSettings;
+
+  // --- History Logic ---
+  let fullHistory = [];
+  let activeFilters = []; 
+
+  historyBtn.addEventListener('click', () => {
+    const isVisible = historyContainer.style.display === 'block';
+    historyContainer.style.display = isVisible ? 'none' : 'block';
+    filterContainer.style.display = isVisible ? 'none' : 'flex';
     
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 20px;
-    }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #ccc;
-      transition: .3s;
-      border-radius: 20px;
-    }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 14px;
-      width: 14px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: .3s;
-      border-radius: 50%;
-    }
-    input:checked + .slider { background-color: #4CAF50; }
-    input:checked + .slider:before { transform: translateX(20px); }
+    if (!isVisible) renderHistory();
+  });
 
-    /* Input Styles */
-    input[type=number] {
-      width: 40px;
-      padding: 2px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      text-align: center;
-    }
+  function renderHistory() {
+    chrome.storage.local.get(['chatHistory'], (data) => {
+      fullHistory = data.chatHistory || [];
+      
+      if (fullHistory.length === 0) {
+        historyContainer.innerHTML = '<div style="text-align:center; color:#888; padding:10px; font-size:10px;">History empty</div>';
+        return;
+      }
 
-    /* History Section */
-    #historyBtn {
-      width: 100%; padding: 8px; background-color: #4CAF50; color: white;
-      border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
-      margin-top: 5px;
-    }
-    #historyBtn:hover { background-color: #45a049; }
+      renderFilters();
+      drawList();
+    });
+  }
 
-    #filterContainer {
-      display: none; 
-      margin-top: 8px; 
-      padding: 5px; 
-      background: #f9f9f9; 
-      border-radius: 4px; 
-      flex-wrap: wrap; 
-      gap: 5px;
-    }
-    .filter-chip {
-      padding: 3px 6px;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      font-size: 11px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      opacity: 0.6;
-      transition: 0.2s;
-    }
-    .filter-chip.active { opacity: 1; border-color: #4CAF50; background: #f1f8e9; }
-    .filter-chip img { width: 12px; height: 12px; margin-right: 4px; }
+  function renderFilters() {
+    const domains = {};
+    fullHistory.forEach(chat => {
+      try {
+        const domain = new URL(chat.url).hostname;
+        if (!domains[domain]) domains[domain] = { icon: chat.icon, count: 0 };
+        domains[domain].count++;
+      } catch (e) {}
+    });
 
-    #historyContainer {
-      margin-top: 8px; max-height: 250px; overflow-y: auto; display: none;
-      border-top: 1px solid #eee; padding-top: 5px;
-    }
-    .history-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 6px; margin-bottom: 3px; background: #fff; border-radius: 4px; 
-      border: 1px solid #f0f0f0; cursor: pointer; transition: background 0.2s;
-    }
-    .history-item:hover { background: #f9f9f9; }
+    filterContainer.innerHTML = '';
+    Object.keys(domains).forEach(domain => {
+      const chip = document.createElement('div');
+      chip.className = 'filter-chip';
+      if (activeFilters.includes(domain)) chip.classList.add('active');
+      
+      chip.innerHTML = `
+        <img src="${domains[domain].icon || 'icon.png'}" onerror="this.src='icon.png'">
+        <span>${domain.split('.')[0]} (${domains[domain].count})</span>
+      `;
+      
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        const idx = activeFilters.indexOf(domain);
+        if (idx > -1) activeFilters.splice(idx, 1);
+        else activeFilters.push(domain);
+        
+        renderFilters();
+        drawList();
+      };
+      
+      filterContainer.appendChild(chip);
+    });
+  }
+
+  function drawList() {
+    historyContainer.innerHTML = '';
     
-    .h-info { display: flex; align-items: center; flex: 1; min-width: 0; }
-    .h-icon { width: 14px; height: 14px; margin-right: 6px; flex-shrink: 0; }
-    .h-text { 
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-      font-size: 11px; color: #333;
+    let filtered = fullHistory;
+    if (activeFilters.length > 0) {
+      filtered = fullHistory.filter(chat => {
+        try {
+          const domain = new URL(chat.url).hostname;
+          return activeFilters.includes(domain);
+        } catch (e) { return false; }
+      });
     }
-    .h-meta { font-size: 10px; color: #999; margin-left: 5px; white-space: nowrap; }
 
-    .delete-btn {
-      background: none; border: none; color: #ccc; cursor: pointer; 
-      padding: 2px; font-size: 14px; margin-left: 5px;
-    }
-    .delete-btn:hover { color: #ff5252; }
-    
-  </style>
-</head>
-<body>
-  <div class="header">
-    <img src="icon.png" alt="Icon">
-    <h3>AI Navigator</h3>
-  </div>
+    filtered.forEach(chat => {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      
+      const date = new Date(chat.lastUpdate).toLocaleDateString();
+      const msgCount = chat.messages ? chat.messages.length : 0;
 
-  <div class="setting-row">
-    <span class="label">Chat Navigation</span>
-    <label class="switch"><input type="checkbox" id="navToggle" checked><span class="slider"></span></label>
-  </div>
-  
-  <div class="setting-row">
-    <span class="label">Block Auto-Scroll</span>
-    <label class="switch"><input type="checkbox" id="scrollToggle"><span class="slider"></span></label>
-  </div>
+      item.innerHTML = `
+        <div class="h-info">
+          <img class="h-icon" src="${chat.icon || 'icon.png'}" onerror="this.src='icon.png'">
+          <div class="h-text">${chat.title || 'Chat'}</div>
+          <div class="h-meta">${date} | ${msgCount} msgs</div>
+        </div>
+        <button class="delete-btn" title="Delete">&times;</button>
+      `;
 
-  <div class="setting-row">
-    <span class="label">Dark Mode TOC</span>
-    <label class="switch"><input type="checkbox" id="themeToggle"><span class="slider"></span></label>
-  </div>
+      item.querySelector('.h-info').onclick = () => {
+        chrome.tabs.query({ url: chat.url }, (tabs) => {
+          if (tabs.length > 0) {
+            chrome.tabs.update(tabs[0].id, { active: true });
+            chrome.windows.update(tabs[0].windowId, { focused: true });
+          } else {
+            chrome.tabs.create({ url: chat.url });
+          }
+        });
+      };
 
-  <div class="setting-row">
-    <span class="label">Snippet Length (chars)</span>
-    <input type="number" id="snippetLen" min="10" max="100" value="40">
-  </div>
+      item.querySelector('.delete-btn').onclick = (e) => {
+        e.stopPropagation();
+        deleteChat(chat.sessionId);
+      };
 
-  <button id="historyBtn">View History</button>
+      historyContainer.appendChild(item);
+    });
+  }
 
-  <!-- Filter Bar -->
-  <div id="filterContainer"></div>
-
-  <!-- History List -->
-  <div id="historyContainer"></div>
-
-  <script src="popup.js"></script>
-</body>
-</html>
+  function deleteChat(sessionId) {
+    chrome.storage.local.get(['chatHistory'], (data) => {
+      let history = data.chatHistory || [];
+      history = history.filter(h => h.sessionId !== sessionId);
+      chrome.storage.local.set({ chatHistory: history }, () => {
+        fullHistory = history;
+        renderHistory();
+      });
+    });
+  }
+});
