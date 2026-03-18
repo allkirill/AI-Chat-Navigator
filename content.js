@@ -1,14 +1,14 @@
 let navEnabled = true;
 let messageLimit = 10;
-let blockScroll = false; // New setting
-let darkTheme = false;   // New setting
-let snippetLen = 40;     // New setting
+let blockScroll = true; // Default TRUE now
+let darkTheme = false;  
+let snippetLen = 40;     
 
 // Load settings
 chrome.storage.sync.get(['navEnabled', 'limit', 'blockScroll', 'darkTheme', 'snippetLen'], (data) => {
   if (data.navEnabled !== undefined) navEnabled = data.navEnabled;
   if (data.limit !== undefined) messageLimit = data.limit;
-  if (data.blockScroll !== undefined) blockScroll = data.blockScroll;
+  if (data.blockScroll !== undefined) blockScroll = data.blockScroll; // If undefined, keeps default TRUE
   if (data.darkTheme !== undefined) darkTheme = data.darkTheme;
   if (data.snippetLen !== undefined) snippetLen = data.snippetLen;
   
@@ -28,15 +28,11 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
-// --- SCROLL LOGIC (Updated) ---
+// --- SCROLL LOGIC ---
 const originalScrollTo = window.scrollTo;
 window.scrollTo = function() {
   if (navEnabled && blockScroll) {
-    // If we want to block scroll, we check if it's an automated call
-    // Simple approach: just ignore all scroll calls if enabled and user didn't do it.
-    // Note: This is a broad block. 'blockScroll' usually means "Stay where I am".
-    // But simply blocking window.scrollTo is the requested feature.
-    return; 
+    return; // Block scroll
   }
   return originalScrollTo.apply(this, arguments);
 };
@@ -45,25 +41,65 @@ window.scrollTo = function() {
 // --- UI CREATION ---
 const tocPanel = document.createElement('div');
 tocPanel.id = 'ai-nav-toc';
-// Default styles (Light)
+// Default styles
 tocPanel.style.cssText = `
   position: fixed; top: 20px; right: 20px; width: 250px; 
   background: white; border: 2px solid #4CAF50; 
   border-radius: 8px; padding: 0; z-index: 999999; display: none;
-  font-family: sans-serif; font-size: 13px; color: black; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  user-select: none;
+  font-family: sans-serif; font-size: 12px; color: black; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  user-select: none; min-width: 150px; min-height: 100px;
 `;
 
+// --- HEADER ---
 const header = document.createElement('div');
 header.style.cssText = `
-  background: #f1f8e9; padding: 8px 12px; cursor: move; 
-  border-bottom: 1px solid #ddd; font-weight: bold; border-radius: 6px 6px 0 0;
+  background: #f1f8e9; padding: 5px 8px; cursor: move; 
+  border-bottom: 1px solid #ddd; border-radius: 6px 6px 0 0;
+  display: flex; justify-content: space-between; align-items: center;
 `;
-header.innerHTML = '<span style="color:#2E7D32;">Chat Contents</span>';
+const titleSpan = document.createElement('span');
+titleSpan.style.cssText = `color:#2E7D32; font-weight:bold; font-size: 12px;`;
+titleSpan.innerText = 'Contents';
+
+// Collapse Button
+const collapseBtn = document.createElement('span');
+collapseBtn.innerHTML = '−'; // Minus sign
+collapseBtn.style.cssText = `cursor:pointer; font-weight:bold; color:#666; font-size:14px; padding:0 4px;`;
+collapseBtn.onclick = (e) => {
+  e.stopPropagation();
+  const wrapper = listWrapper;
+  if (wrapper.style.display === 'none') {
+    wrapper.style.display = 'block';
+    collapseBtn.innerHTML = '−';
+  } else {
+    wrapper.style.display = 'none';
+    collapseBtn.innerHTML = '+';
+  }
+};
+
+header.appendChild(titleSpan);
+header.appendChild(collapseBtn);
 tocPanel.appendChild(header);
 
+// --- RESIZE HANDLE (Top-Left) ---
+const resizeHandle = document.createElement('div');
+resizeHandle.style.cssText = `
+  position: absolute; top: 0; left: 0; width: 10px; height: 10px; 
+  cursor: nwse-resize; z-index: 10;
+  border-bottom-right-radius: 4px;
+`;
+// Visual indicator
+const resizeIcon = document.createElement('div');
+resizeIcon.style.cssText = `
+  position: absolute; top: 2px; left: 2px; width: 5px; height: 5px; 
+  border-left: 1px solid #aaa; border-bottom: 1px solid #aaa;
+`;
+resizeHandle.appendChild(resizeIcon);
+tocPanel.appendChild(resizeHandle);
+
+// --- LIST WRAPPER ---
 const listWrapper = document.createElement('div');
-listWrapper.style.cssText = `padding: 10px; overflow-y: auto;`;
+listWrapper.style.cssText = `padding: 5px; overflow-y: auto;`;
 const tocList = document.createElement('ul');
 tocList.id = 'ai-nav-list';
 tocList.style.cssText = `list-style: none; padding: 0; margin: 0;`;
@@ -71,6 +107,49 @@ listWrapper.appendChild(tocList);
 tocPanel.appendChild(listWrapper);
 
 document.body.appendChild(tocPanel);
+
+// --- RESIZE LOGIC ---
+let isResizing = false;
+let startWidth, startHeight, startX, startY;
+
+resizeHandle.addEventListener('mousedown', (e) => {
+  e.preventDefault(); // Prevent text selection
+  e.stopPropagation(); // Prevent drag
+  isResizing = true;
+  startWidth = parseInt(document.defaultView.getComputedStyle(tocPanel).width, 10);
+  startHeight = parseInt(document.defaultView.getComputedStyle(tocPanel).height, 10);
+  startX = e.clientX;
+  startY = e.clientY;
+  
+  // Prevent dragging while resizing
+  header.style.cursor = 'default'; 
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isResizing) {
+    // Calculate new size based on top-left anchor logic (inverse)
+    // Width = Old Width + (Old X - New X) => because dragging left expands right? 
+    // Wait, standard top-left resize behavior:
+    // Drag Left -> Width increases (if anchored right) or Position changes (if anchored left).
+    // Our panel is anchored Top-Right (right: 20px).
+    // So dragging Left (decreasing X) should INCREASE width.
+    
+    const dx = startX - e.clientX; 
+    const dy = e.clientY - startY; // Drag Down increases height
+
+    const newWidth = startWidth + dx;
+    const newHeight = startHeight + dy;
+
+    if (newWidth > 150) tocPanel.style.width = newWidth + 'px';
+    if (newHeight > 80) tocPanel.style.height = newHeight + 'px';
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  isResizing = false;
+  header.style.cursor = 'move';
+});
+
 
 // Theme Logic
 function applyTheme() {
@@ -80,17 +159,17 @@ function applyTheme() {
     tocPanel.style.borderColor = '#444';
     header.style.background = '#333';
     header.style.borderBottom = '1px solid #555';
-    header.querySelector('span').style.color = '#8bc34a';
+    titleSpan.style.color = '#8bc34a';
+    resizeIcon.style.borderColor = '#555';
   } else {
     tocPanel.style.background = 'white';
     tocPanel.style.color = 'black';
     tocPanel.style.borderColor = '#4CAF50';
     header.style.background = '#f1f8e9';
     header.style.borderBottom = '1px solid #ddd';
-    header.querySelector('span').style.color = '#2E7D32';
+    titleSpan.style.color = '#2E7D32';
+    resizeIcon.style.borderColor = '#aaa';
   }
-  // Re-render items? No, CSS inheritance handles text color, but list items have inline styles.
-  // Let's update list items styles
   const items = tocList.querySelectorAll('li');
   items.forEach(item => {
     item.style.background = darkTheme ? '#333' : '#f5f5f5';
@@ -103,6 +182,7 @@ let isDragging = false;
 let offset = { x: 0, y: 0 };
 
 header.addEventListener('mousedown', (e) => {
+  if (e.target === collapseBtn || e.target === resizeHandle) return; // Don't drag on buttons
   isDragging = true;
   offset.x = e.clientX - tocPanel.offsetLeft;
   offset.y = e.clientY - tocPanel.offsetTop;
@@ -110,7 +190,7 @@ header.addEventListener('mousedown', (e) => {
 });
 
 document.addEventListener('mousemove', (e) => {
-  if (isDragging) {
+  if (isDragging && !isResizing) {
     tocPanel.style.left = (e.clientX - offset.x) + 'px';
     tocPanel.style.top = (e.clientY - offset.y) + 'px';
   }
@@ -119,7 +199,7 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseup', () => { isDragging = false; });
 
 function updatePanelHeight() {
-  const height = messageLimit * 35; 
+  const height = messageLimit * 30; // Smaller item height
   listWrapper.style.maxHeight = height + 'px';
 }
 
@@ -128,7 +208,6 @@ function updatePanelHeight() {
 function smartScrollToElement(element) {
   if (!element) return;
   element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
   setTimeout(() => {
     const rect = element.getBoundingClientRect();
     if (Math.abs(rect.top) > 200) { 
@@ -156,18 +235,16 @@ function findUserContainer(element) {
 }
 
 function addToTOC(element, fullText) {
-  // Use snippetLen setting
   const shortText = fullText.substring(0, snippetLen) + '...';
   
   const listItem = document.createElement('li');
-  // Style based on current theme
   const bgColor = darkTheme ? '#333' : '#f5f5f5';
   const txtColor = darkTheme ? '#eee' : 'black';
   
   listItem.style.cssText = `
-    margin-bottom: 5px; padding: 8px; background: ${bgColor}; color: ${txtColor};
-    border-radius: 4px; cursor: pointer; word-break: break-word;
-    transition: background 0.2s;
+    margin-bottom: 3px; padding: 4px 6px; background: ${bgColor}; color: ${txtColor};
+    border-radius: 3px; cursor: pointer; word-break: break-word;
+    transition: background 0.2s; font-size: 11px;
   `;
   listItem.innerText = shortText;
   
@@ -186,7 +263,7 @@ function addToTOC(element, fullText) {
     if (target) {
       smartScrollToElement(target);
       target.style.transition = 'background 0.5s';
-      target.style.background = darkTheme ? '#004d40' : '#fff9c4'; // Flash color matches theme
+      target.style.background = darkTheme ? '#004d40' : '#fff9c4';
       setTimeout(() => target.style.background = '', 2000);
     }
   };
