@@ -1,24 +1,37 @@
-# AI-Chat-Navigator
-A universal browser extension to navigate, control scroll, and manage history for AI chats (ChatGPT, Gemini, Qwen, DeepSeek, etc.).
+# AI-Chat-Navigator 🧭
+A universal browser extension to fix the most annoying AI chat problems: uncontrolled auto-scrolling and lack of navigation.
 
-Features
-Chat Contents (TOC): Automatically creates a navigable table of contents for your chat session based on your messages.
-Smart Navigation: Click an item in the TOC to instantly scroll to that part of the conversation.
-Scroll Control: Prevents the chat from automatically jumping to the bottom while the AI is generating text.
-Universal Support: Works with ChatGPT, Gemini, Qwen, DeepSeek, and others without hard-coded selectors.
-Dark/Light Theme: Toggle the appearance of the navigation panel.
-Chat History: Saves a history of your chats locally, organized by session.
-Installation
-Download or clone this repository.
-Open Google Chrome and navigate to chrome://extensions/.
-Enable Developer mode (toggle in the top right corner).
+Tired of the chat jumping to the bottom while the AI is generating an answer? Tired of scrolling through endless walls of text to find your previous question?
+
+AI Chat Navigator adds a "Table of Contents" to your chat and gives you full control over scrolling.
+
+Demo GIF
+
+✨ Features
+📋 Chat Table of Contents: Automatically creates a list of your messages. Click to instantly jump to any part of the conversation.
+🛑 Smart Auto-Scroll Block: The page stays where you want it. No more fighting with the chat interface while reading.
+🌍 Universal Support: Works with ChatGPT, Gemini, Qwen, DeepSeek, Claude, and others. No hard-coded selectors used.
+🌓 Dark & Light Theme: Matches your preference.
+💾 Local History: Keeps a log of your chats locally for quick access.
+🚀 Installation
+Option 1: Chrome Web Store (Recommended)
+(Coming soon!)
+
+Option 2: Load Manually (Developer Mode)
+Download this repository (Code -> Download ZIP) and unzip it.
+Open Google Chrome and go to chrome://extensions/.
+Enable Developer mode (top right toggle).
 Click Load unpacked.
-Select the extension folder.
-Important: After installation, refresh any open AI chat tabs to activate the extension.
+Select the unzipped folder.
+Important: Refresh any open AI chat tabs to activate.
+⚙️ How it works
+Instead of relying on specific HTML classes that break every week, this extension uses a heuristic approach:
 
-Usage
-Navigation Panel: Appears in the top-right corner of the chat interface. You can drag it anywhere.
-Popup Menu: Click the extension icon to:
-Toggle Navigation/Scroll features.
-Change TOC appearance (Theme, Snippet length).
-View and filter Chat History.
+Detects your Enter key press.
+Scans the DOM for your text content.
+Anchors the message in the navigation panel.
+🤝 Contributing
+Found a bug or want to improve the UI? Feel free to open an Issue or Pull Request!
+
+📜 License
+MIT License.
