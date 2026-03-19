@@ -7,7 +7,7 @@ AI Chat Navigator adds a "Table of Contents" to your chat and gives you full con
 
 Demo GIF
 
-✨ Features
+Features
 📋 Chat Table of Contents: Automatically creates a list of your messages. Click to instantly jump to any part of the conversation.
 🛑 Smart Auto-Scroll Block: The page stays where you want it. No more fighting with the chat interface while reading.
 🌍 Universal Support: Works with ChatGPT, Gemini, Qwen, DeepSeek, Claude, and others. No hard-coded selectors used.
