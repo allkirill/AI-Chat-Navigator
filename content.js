@@ -3,12 +3,13 @@ let messageLimit = 10;
 let blockScroll = true; // Default TRUE now
 let darkTheme = false;  
 let snippetLen = 40;     
+let lastUrl = window.location.href; // Track URL changes for navigation
 
 // Load settings
 chrome.storage.sync.get(['navEnabled', 'limit', 'blockScroll', 'darkTheme', 'snippetLen'], (data) => {
   if (data.navEnabled !== undefined) navEnabled = data.navEnabled;
   if (data.limit !== undefined) messageLimit = data.limit;
-  if (data.blockScroll !== undefined) blockScroll = data.blockScroll; // If undefined, keeps default TRUE
+  if (data.blockScroll !== undefined) blockScroll = data.blockScroll; 
   if (data.darkTheme !== undefined) darkTheme = data.darkTheme;
   if (data.snippetLen !== undefined) snippetLen = data.snippetLen;
   
@@ -59,7 +60,7 @@ header.style.cssText = `
 `;
 const titleSpan = document.createElement('span');
 titleSpan.style.cssText = `color:#2E7D32; font-weight:bold; font-size: 12px;`;
-titleSpan.innerText = 'Contents';
+titleSpan.innerText = 'AI Chat Navigator'; // Updated Name
 
 // Collapse Button
 const collapseBtn = document.createElement('span');
@@ -127,15 +128,8 @@ resizeHandle.addEventListener('mousedown', (e) => {
 
 document.addEventListener('mousemove', (e) => {
   if (isResizing) {
-    // Calculate new size based on top-left anchor logic (inverse)
-    // Width = Old Width + (Old X - New X) => because dragging left expands right? 
-    // Wait, standard top-left resize behavior:
-    // Drag Left -> Width increases (if anchored right) or Position changes (if anchored left).
-    // Our panel is anchored Top-Right (right: 20px).
-    // So dragging Left (decreasing X) should INCREASE width.
-    
     const dx = startX - e.clientX; 
-    const dy = e.clientY - startY; // Drag Down increases height
+    const dy = e.clientY - startY; 
 
     const newWidth = startWidth + dx;
     const newHeight = startHeight + dy;
@@ -182,7 +176,7 @@ let isDragging = false;
 let offset = { x: 0, y: 0 };
 
 header.addEventListener('mousedown', (e) => {
-  if (e.target === collapseBtn || e.target === resizeHandle) return; // Don't drag on buttons
+  if (e.target === collapseBtn || e.target === resizeHandle) return; 
   isDragging = true;
   offset.x = e.clientX - tocPanel.offsetLeft;
   offset.y = e.clientY - tocPanel.offsetTop;
@@ -199,7 +193,7 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseup', () => { isDragging = false; });
 
 function updatePanelHeight() {
-  const height = messageLimit * 30; // Smaller item height
+  const height = messageLimit * 30; 
   listWrapper.style.maxHeight = height + 'px';
 }
 
@@ -266,112 +260,3 @@ function addToTOC(element, fullText) {
       target.style.background = darkTheme ? '#004d40' : '#fff9c4';
       setTimeout(() => target.style.background = '', 2000);
     }
-  };
-  
-  tocList.appendChild(listItem);
-  
-  while (tocList.children.length > messageLimit) {
-    tocList.removeChild(tocList.firstChild);
-  }
-  
-  tocPanel.style.display = 'block';
-  updatePanelHeight();
-}
-
-function findElementByText(text) {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-  let node;
-  const snippet = text.substring(0, 30);
-  while(node = walker.nextNode()) {
-    if (node.textContent.includes(snippet)) {
-      if (!tocPanel.contains(node.parentElement)) {
-         return node.parentElement;
-      }
-    }
-  }
-  return null;
-}
-
-// --- DETECTION TRIGGER ---
-
-document.addEventListener('keydown', (e) => {
-  if (!navEnabled) return;
-
-  if (e.key === 'Enter' && !e.shiftKey && (e.target.tagName === 'TEXTAREA' || e.target.getAttribute('contenteditable'))) {
-    const userText = (e.target.value || e.target.innerText).trim();
-    
-    if (userText.length > 0) {
-      setTimeout(() => {
-        findAndAnchorMessage(userText);
-      }, 500);
-    }
-  }
-}, true);
-
-function findAndAnchorMessage(text) {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-  let node;
-  const snippet = text.substring(0, 30); 
-
-  while(node = walker.nextNode()) {
-    if (node.textContent.includes(snippet)) {
-      const parent = node.parentElement;
-      
-      if (tocPanel.contains(parent) || parent.tagName === 'TEXTAREA' || parent.closest('textarea, [contenteditable="true"]')) continue;
-
-      const container = findUserContainer(parent);
-      
-      if (container) {
-        addToTOC(container, text);
-        saveHistory(text);
-        return; 
-      }
-    }
-  }
-}
-
-// --- HISTORY ---
-
-function getChatSessionId() {
-  const path = window.location.pathname;
-  const match = path.match(/\/(c|app)\/([a-zA-Z0-9-]+)/);
-  if (match) return match[0]; 
-  return window.location.origin + window.location.pathname;
-}
-
-function saveHistory(text) {
-  const sessionId = getChatSessionId();
-  const fullUrl = window.location.href;
-  const title = document.title;
-  const icon = document.querySelector('link[rel="icon"]')?.href || '';
-
-  chrome.storage.local.get(['chatHistory'], (data) => {
-    let history = data.chatHistory || [];
-    const idx = history.findIndex(h => h.sessionId === sessionId);
-    
-    const entry = {
-      text: text.substring(0, 50),
-      time: new Date().toISOString()
-    };
-
-    if (idx !== -1) {
-      history[idx].messages.push(entry);
-      history[idx].lastUpdate = new Date().toISOString();
-      history[idx].title = title; 
-      const item = history.splice(idx, 1)[0];
-      history.unshift(item);
-    } else {
-      history.unshift({
-        sessionId: sessionId,
-        url: fullUrl,
-        title: title,
-        icon: icon,
-        messages: [entry],
-        lastUpdate: new Date().toISOString()
-      });
-    }
-
-    if (history.length > 100) history.pop();
-    chrome.storage.local.set({ chatHistory: history });
-  });
-}
